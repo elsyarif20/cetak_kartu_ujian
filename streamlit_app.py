@@ -15,57 +15,44 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- INJECT CSS MODERN ---
+# --- INJECT CSS MODERN (Agar Tampilan 'Mahal') ---
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
 
-    /* BASE STYLE */
     html, body, [class*="css"] {
         font-family: 'Inter', sans-serif;
         color: #1e293b;
     }
     .stApp {
-        background-color: #f1f5f9; /* Slate-100 */
+        background-color: #f8fafc;
     }
-
-    /* CARDS (KOTAK KONTEN) */
     .css-card {
         background-color: white;
         padding: 2rem;
         border-radius: 12px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         margin-bottom: 1.5rem;
         border: 1px solid #e2e8f0;
     }
-
-    /* HEADER STYLE */
     .main-header {
-        font-size: 2.5rem;
+        font-size: 2.2rem;
         font-weight: 800;
-        background: -webkit-linear-gradient(45deg, #0f172a, #334155);
+        background: -webkit-linear-gradient(45deg, #1e293b, #334155);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         margin-bottom: 0.5rem;
     }
-    .sub-header {
-        color: #64748b;
-        font-size: 1.1rem;
-        margin-bottom: 2rem;
-    }
-
-    /* CUSTOM BUTTONS */
-    div.stButton > button {
-        width: 100%;
-        border-radius: 8px;
-        font-weight: 600;
-        transition: all 0.3s ease;
-    }
-    
-    /* SIDEBAR */
-    section[data-testid="stSidebar"] {
+    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
         background-color: white;
-        border-right: 1px solid #e2e8f0;
+        border-radius: 8px 8px 0 0;
+        padding: 10px 20px;
+    }
+    .stTabs [aria-selected="true"] {
+        border-bottom: 3px solid #2563eb;
+        color: #2563eb;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -87,7 +74,6 @@ def load_fonts():
             "small": ImageFont.truetype("arial.ttf", 14)
         }
     except:
-        # Fallback ke default jika Arial tidak ada di server
         d = ImageFont.load_default()
         return {"h1":d, "h2":d, "body_b":d, "body":d, "small":d}
 
@@ -107,7 +93,6 @@ def extract_photos(zip_file):
 def draw_template(template_type, siswa, config, logo, ttd, photos, jadwal):
     """
     Fungsi Utama Menggambar Kartu.
-    SUDAH DIPERBAIKI: Masalah resize gambar transparan (ValueError) sudah fix.
     """
     W, H = 1200, 500
     img = Image.new("RGB", (W, H), "white")
@@ -135,8 +120,7 @@ def draw_template(template_type, siswa, config, logo, ttd, photos, jadwal):
 
     # 1. TEMPLATE MODERN BLUE
     if template_type == "Modern Blue":
-        # Header Block
-        draw.rectangle([0, 0, 600, 110], fill="#0f172a") # Dark Slate
+        draw.rectangle([0, 0, 600, 110], fill="#0f172a") # Header Blok
         
         if logo: 
             l_res = logo.resize((90,90))
@@ -163,22 +147,18 @@ def draw_template(template_type, siswa, config, logo, ttd, photos, jadwal):
         
         img.paste(qr, (480, 340))
         
-        # TTD Fixed
         draw.text((250, 350), "Mengetahui,", font=fonts['small'], fill="black")
         if ttd: 
             t_res = ttd.resize((120,60))
             img.paste(t_res, (250, 390), t_res if t_res.mode=='RGBA' else None)
-            
         draw.text((250, 450), config['kepsek'], font=fonts['body_b'], fill="black")
         
-        # Jadwal Color
-        header_color = "#0f172a"
-        text_color = "white"
+        header_color = "#0f172a"; text_color = "white"
 
-    # 2. TEMPLATE ISLAMIC GREEN
+    # 2. TEMPLATE ISLAMIC GREEN (AL-GHOZALI STYLE)
     elif template_type == "Islamic Green":
-        draw.rectangle([5, 5, W-5, H-5], outline="#14532d", width=5) 
-        draw.rectangle([15, 15, W-15, H-15], outline="#eab308", width=2) 
+        draw.rectangle([5, 5, W-5, H-5], outline="#14532d", width=5) # Hijau Tua
+        draw.rectangle([15, 15, W-15, H-15], outline="#eab308", width=2) # Emas
         
         if logo: 
             l_res = logo.resize((80,80))
@@ -203,7 +183,6 @@ def draw_template(template_type, siswa, config, logo, ttd, photos, jadwal):
             draw.text((315, dy), v, font=fonts['body_b'], fill="#14532d")
             dy += 35
             
-        # TTD Fixed
         draw.text((400, 320), "Kepala Sekolah,", font=fonts['small'], fill="black")
         if ttd: 
             t_res = ttd.resize((120,60))
@@ -212,9 +191,7 @@ def draw_template(template_type, siswa, config, logo, ttd, photos, jadwal):
         
         img.paste(qr, (50, 350)) 
         
-        # Jadwal Color
-        header_color = "#14532d"
-        text_color = "white"
+        header_color = "#14532d"; text_color = "white"
 
     # 3. TEMPLATE CLASSIC FORMAL (DEFAULT)
     else:
@@ -236,22 +213,18 @@ def draw_template(template_type, siswa, config, logo, ttd, photos, jadwal):
             y += 35
             
         if foto_img: 
-            img.paste(foto_img, (30, 320))
-            draw.rectangle([30, 320, 140, 460], outline="black")
+            img.paste(foto_img, (30, 320)); draw.rectangle([30, 320, 140, 460], outline="black")
         else:
             draw.rectangle([30, 320, 140, 460], outline="black")
         
         img.paste(qr, (480, 20))
-        
-        # TTD Fixed
         draw.text((400, 350), "Kepala Sekolah,", font=fonts['small'], fill="black")
         if ttd: 
             t_res = ttd.resize((120,60))
             img.paste(t_res, (400, 370), t_res if t_res.mode=='RGBA' else None)
         draw.text((400, 440), config['kepsek'], font=fonts['body_b'], fill="black")
         
-        header_color = "#f1f5f9"
-        text_color = "black"
+        header_color = "#f1f5f9"; text_color = "black"
 
     # --- GAMBAR JADWAL (KANAN) ---
     draw.rectangle([600, 0, 1200, 500], fill="white")
@@ -277,17 +250,35 @@ def draw_template(template_type, siswa, config, logo, ttd, photos, jadwal):
         
     return img
 
+def generate_dummy_preview(template_type):
+    """Membuat preview kartu di sidebar dengan data palsu"""
+    dummy_siswa = {"NO PESERTA": "01-001", "NAMA": "AHMAD SISWA", "NIS": "12345", "RUANG": "R-01"}
+    dummy_conf = {"sekolah": "NAMA SEKOLAH", "alamat": "Alamat Sekolah", "kepsek": "Nama Kepsek"}
+    dummy_jadwal = [{"hari": "Senin", "jam": "07.30", "mapel": "Matematika"}]
+    
+    img = draw_template(template_type, dummy_siswa, dummy_conf, None, None, {}, dummy_jadwal)
+    return img.resize((300, 125))
+
 # ==========================================
-# 3. UI LAYOUT (SIDEBAR & MAIN)
+# 3. UI LAYOUT
 # ==========================================
 with st.sidebar:
     st.title("Admin Panel")
-    st.caption("Al-Ghozali CardPro v2.1")
+    st.caption("Al-Ghozali CardPro v2.3")
     st.markdown("---")
     
-    st.markdown("### 🎨 Tampilan")
-    template_option = st.selectbox("Template Desain", ["Islamic Green", "Modern Blue", "Classic Formal"])
+    st.markdown("### 🎨 Pilih Desain")
+    template_option = st.selectbox("Template Kartu", ["Islamic Green", "Modern Blue", "Classic Formal"])
     
+    # --- LIVE PREVIEW DUMMY ---
+    st.caption("Preview Desain:")
+    try:
+        dummy_img = generate_dummy_preview(template_option)
+        st.image(dummy_img, use_container_width=True)
+    except: pass
+    # --------------------------
+    
+    st.markdown("---")
     st.markdown("### 🏫 Identitas")
     conf_sekolah = st.text_input("Nama Sekolah", "SMA ISLAM AL-GHOZALI")
     conf_alamat = st.text_area("Alamat", "Jl. Permata No. 19 Curug Gunungsindur")
@@ -295,7 +286,7 @@ with st.sidebar:
 
 # HEADER
 st.markdown('<div class="main-header">Al-Ghozali CardPro</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">Sistem Cetak Kartu Ujian Profesional</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">Generator Kartu Ujian Terpadu & Profesional</div>', unsafe_allow_html=True)
 
 # DASHBOARD METRICS
 c1, c2, c3 = st.columns(3)
@@ -308,7 +299,7 @@ c3.metric("Jadwal Ujian", len(st.session_state['jadwal_ujian']))
 st.markdown("<br>", unsafe_allow_html=True)
 
 # TABS
-tab1, tab2, tab3 = st.tabs(["📂 Upload Data", "📅 Atur Jadwal", "🖨️ Cetak Kartu"])
+tab1, tab2, tab3 = st.tabs(["📂 1. Upload Data", "📅 2. Atur Jadwal", "🖨️ 3. Cetak Kartu"])
 
 # --- TAB 1: DATA ---
 with tab1:
@@ -316,7 +307,7 @@ with tab1:
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("1. Data Siswa (Excel)")
+        st.subheader("Data Siswa")
         upl_excel = st.file_uploader("Upload Excel (.xlsx)", type=['xlsx'])
         if upl_excel:
             df = pd.read_excel(upl_excel)
@@ -325,7 +316,7 @@ with tab1:
             st.success(f"✅ {len(df)} Siswa dimuat.")
     
     with col2:
-        st.subheader("2. Aset Gambar")
+        st.subheader("Aset Gambar")
         upl_zip = st.file_uploader("Foto Siswa (.zip)", type=['zip'], help="Nama file harus sesuai NIS")
         c_l, c_t = st.columns(2)
         upl_logo = c_l.file_uploader("Logo Sekolah", type=['png','jpg'])
@@ -373,19 +364,17 @@ with tab3:
     st.subheader("Preview & Download")
     
     if 'data_siswa' in st.session_state:
-        # Config Data
         config = {'sekolah':conf_sekolah, 'alamat':conf_alamat, 'kepsek':conf_kepsek}
         logo = st.session_state.get('logo')
         ttd = st.session_state.get('ttd')
         photos = st.session_state.get('photos', {})
         
-        # Preview
         col_p, col_d = st.columns([2, 1])
         with col_p:
-            st.markdown("##### Live Preview")
+            st.markdown("##### Live Preview (Data Pertama)")
             first_row = st.session_state['data_siswa'].iloc[0].to_dict()
             img = draw_template(template_option, first_row, config, logo, ttd, photos, st.session_state['jadwal_ujian'])
-            st.image(img, caption=f"Desain: {template_option}", use_container_width=True)
+            st.image(img, use_container_width=True)
             
         with col_d:
             st.markdown("##### Download")
@@ -409,7 +398,6 @@ with tab3:
                             
                 st.success("Selesai!")
                 st.download_button("📥 DOWNLOAD ZIP", mem_zip.getvalue(), "Kartu_Ujian.zip", "application/zip")
-                
     else:
         st.warning("Upload Data Excel dulu di Tab 1.")
     st.markdown('</div>', unsafe_allow_html=True)
