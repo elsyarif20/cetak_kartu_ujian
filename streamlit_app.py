@@ -27,23 +27,41 @@ st.markdown("""
         background-color: #15803d; color: white; border-radius: 6px; font-weight: bold; height: 3em; width: 100%;
     }
     div.stButton > button:hover { background-color: #166534; border-color: #166534; color: white; }
-    [data-testid="stExpander"] { background-color: white; border-radius: 10px; }
+    [data-testid="stExpander"] { background-color: white; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .status-ok { color: green; font-weight: bold; }
+    .status-err { color: red; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
 
 if 'jadwal_ujian' not in st.session_state:
     st.session_state['jadwal_ujian'] = []
+if 'photos' not in st.session_state:
+    st.session_state['photos'] = {}
 
 # ==========================================
-# 2. LOGIC WORD GENERATOR
+# 2. LOGIC FUNCTIONS
 # ==========================================
+def extract_photos(zip_file):
+    """Ekstrak foto dari ZIP ke Memory Dictionary"""
+    photo_dict = {}
+    if zip_file:
+        with zipfile.ZipFile(zip_file) as z:
+            for f in z.namelist():
+                if f.lower().endswith(('.png','.jpg','.jpeg')) and not f.startswith('__'):
+                    try:
+                        # Ambil nama file tanpa ekstensi (Contoh: 12345.jpg -> 12345)
+                        base = f.split('/')[-1].rsplit('.',1)[0]
+                        photo_dict[base] = Image.open(io.BytesIO(z.read(f)))
+                    except: continue
+    return photo_dict
+
 def set_cell_color(cell, color_hex):
     """Mewarnai background cell tabel Word"""
     tcPr = cell._tc.get_or_add_tcPr()
     shd = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{color_hex}"/>')
     tcPr.append(shd)
 
-def generate_word_doc(df, config, template_type, logo_bytes, ttd_bytes, jadwal_list):
+def generate_word_doc(df, config, template_type, logo_bytes, ttd_bytes, jadwal_list, photos):
     doc = Document()
     
     # Setup Halaman A4 Landscape
@@ -67,12 +85,13 @@ def generate_word_doc(df, config, template_type, logo_bytes, ttd_bytes, jadwal_l
         judul_kartu = "DUPLIKAT KARTU UJIAN"; judul_color = RGBColor(255,0,0)
 
     # --- LOOPING DATA SISWA ---
+    # Normalisasi kolom excel
     df.columns = [str(c).strip().upper() for c in df.columns]
     
     for index, row in df.iterrows():
         # Tabel Utama (2 Kolom Layout)
         main_tbl = doc.add_table(rows=1, cols=2)
-        main_tbl.style = 'Table Grid' # Memastikan Border Luar Ada
+        main_tbl.style = 'Table Grid'
         main_tbl.autofit = False
         
         # === KIRI: BIODATA ===
@@ -101,11 +120,31 @@ def generate_word_doc(df, config, template_type, logo_bytes, ttd_bytes, jadwal_l
         # Tabel Biodata Nested
         bio_tbl = cell_l.add_table(rows=4, cols=3); bio_tbl.autofit = False
         c_foto = bio_tbl.cell(0,0); c_foto.merge(bio_tbl.cell(3,0)); c_foto.width = Cm(3.0)
-        c_foto.text = "FOTO\n3x4"; c_foto.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        # --- PASANG FOTO DARI ZIP ---
+        nis_key = str(row.get('NISN', '')).replace('.0','')
+        # Coba cari NISN dulu, kalau ga ada cari NIS/NO PESERTA (fallback)
+        if nis_key not in photos:
+             nis_key = str(row.get('NIS', '')).replace('.0','')
+        
+        if nis_key in photos:
+            try:
+                # Resize gambar di memory agar pas di tabel Word
+                img_pil = photos[nis_key]
+                img_byte_arr = io.BytesIO()
+                img_pil.save(img_byte_arr, format='JPEG')
+                
+                p_foto = c_foto.paragraphs[0]; p_foto.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                run_f = p_foto.add_run()
+                run_f.add_picture(io.BytesIO(img_byte_arr.getvalue()), width=Cm(2.5), height=Cm(3.2))
+            except:
+                c_foto.text = "Error Foto"
+        else:
+            c_foto.text = "FOTO\n3x4"
+            c_foto.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-        # Isi Data
-        nisn_val = str(row.get('NISN', '')).replace('.0','')
-        items = [("No Peserta", row.get('NOMOR PESERTA', '-')), ("Nama", row.get('NAMA PESERTA', '-')), ("NISN", nisn_val), ("Ruang", row.get('RUANG', '-'))]
+        # Isi Data Text
+        items = [("No Peserta", row.get('NOMOR PESERTA', '-')), ("Nama", row.get('NAMA PESERTA', '-')), ("NISN", str(row.get('NISN','-')).replace('.0','')), ("Ruang", row.get('RUANG', '-'))]
         
         for i, (lbl, val) in enumerate(items):
             bio_tbl.cell(i, 1).text = lbl; bio_tbl.cell(i, 1).paragraphs[0].runs[0].font.size = Pt(9)
@@ -129,23 +168,22 @@ def generate_word_doc(df, config, template_type, logo_bytes, ttd_bytes, jadwal_l
         if jadwal_list:
             # KOLOM DITAMBAH JADI 5 (Ada PARAF)
             j_tbl = cell_r.add_table(rows=1, cols=5) 
-            j_tbl.style = 'Table Grid' # BORDER TEGAS
+            j_tbl.style = 'Table Grid'
             hdr = j_tbl.rows[0]
             
             # Header
             col_names = ["HARI", "JAM", "WAKTU", "MAPEL", "PARAF"]
-            # Atur lebar kolom manual agar rapi
             widths = [Cm(2.0), Cm(1.0), Cm(2.5), Cm(6.0), Cm(1.5)]
             
             for idx, txt in enumerate(col_names):
                 set_cell_color(hdr.cells[idx], header_bg)
                 hdr.cells[idx].text = txt
-                hdr.cells[idx].width = widths[idx] # Set Lebar
+                hdr.cells[idx].width = widths[idx]
                 
                 run = hdr.cells[idx].paragraphs[0].runs[0]
                 run.font.bold = True
                 run.font.color.rgb = text_hdr_color
-                run.font.size = Pt(7) # Font Header Kecil
+                run.font.size = Pt(7)
 
             # Isi
             for jdata in jadwal_list:
@@ -156,10 +194,7 @@ def generate_word_doc(df, config, template_type, logo_bytes, ttd_bytes, jadwal_l
                         cells[idx].text = str(val)
                         cells[idx].paragraphs[0].runs[0].font.size = Pt(8)
                         cells[idx].width = widths[idx]
-                
-                # Kolom Paraf (Index 4) Kosong
-                cells[4].text = "" 
-                cells[4].width = widths[4]
+                cells[4].text = ""; cells[4].width = widths[4] # Paraf kosong
         else:
             cell_r.add_paragraph("(Jadwal Tidak Diatur)")
 
@@ -181,7 +216,9 @@ with st.sidebar:
     in_kepsek = st.text_input("Kepala Sekolah", "Antoni Firdaus, SHI, M.Pd.")
     in_tgl = st.text_input("Tanggal TTD", "Gunung Sindur, 20 Mei 2026")
 
-tab1, tab2, tab3 = st.tabs(["📂 1. Upload Data", "📅 2. Atur Jadwal", "🖨️ 3. Download Word"])
+import zipfile 
+
+tab1, tab2, tab3 = st.tabs(["📂 1. Data Siswa & Aset", "📅 2. Atur Jadwal", "🖨️ 3. Download Word"])
 
 # --- TAB 1 ---
 with tab1:
@@ -190,32 +227,54 @@ with tab1:
     col_up_1, col_up_2 = st.columns(2)
     
     with col_up_1:
-        st.markdown("**1. Upload Excel Data Siswa**")
-        upl_excel = st.file_uploader("File Excel (.xlsx)", type=['xlsx'])
+        st.info("1. Upload Excel Data Siswa (.xlsx)")
+        upl_excel = st.file_uploader("Pilih File Excel", type=['xlsx'])
         
     with col_up_2:
-        st.markdown("**2. Upload Aset Gambar**")
-        upl_zip = st.file_uploader("Foto Siswa (.zip)", type=['zip'], help="Nama file foto harus sesuai NIS/NISN")
+        st.info("2. Upload Foto Siswa (.zip)")
+        upl_zip = st.file_uploader("Pilih File ZIP (Nama foto = NISN)", type=['zip'])
+        
         c1, c2 = st.columns(2)
-        upl_logo = c1.file_uploader("Logo", type=['png','jpg'])
-        upl_ttd = c2.file_uploader("TTD", type=['png','jpg'])
+        upl_logo = c1.file_uploader("Logo Sekolah", type=['png','jpg'])
+        upl_ttd = c2.file_uploader("Scan TTD", type=['png','jpg'])
 
         if upl_zip: 
-            # Logic Extract Photo (Mock logic for streamlit structure)
-            st.success("ZIP Foto berhasil diupload.")
+            st.session_state['photos'] = extract_photos(upl_zip)
+            st.success(f"✅ {len(st.session_state['photos'])} Foto berhasil diekstrak!")
+            
         if upl_logo: st.session_state['logo_bytes'] = upl_logo.getvalue()
         if upl_ttd: st.session_state['ttd_bytes'] = upl_ttd.getvalue()
 
-    # PREVIEW DATA
+    # PREVIEW DATA & STATUS FOTO
     if upl_excel:
         try:
             df = pd.read_excel(upl_excel)
-            st.session_state['df_siswa'] = df
-            st.success(f"✅ Berhasil memuat {len(df)} data siswa.")
+            # Normalisasi Header
+            df.columns = [str(c).strip().upper() for c in df.columns]
             
-            with st.expander("👁️ Lihat Preview Data Siswa (Klik Disini)", expanded=True):
-                st.dataframe(df.head(10), use_container_width=True)
-                st.caption(f"Menampilkan 10 dari {len(df)} data.")
+            # Cek Kelengkapan Foto
+            if 'photos' in st.session_state and st.session_state['photos']:
+                # Tambah kolom Status Foto
+                def cek_foto(row):
+                    nisn = str(row.get('NISN','')).replace('.0','')
+                    if nisn in st.session_state['photos']: return "✅ Ada"
+                    # Fallback cek NIS
+                    nis = str(row.get('NIS','')).replace('.0','')
+                    if nis in st.session_state['photos']: return "✅ Ada"
+                    return "❌ Tidak Ada"
+                
+                df['STATUS FOTO'] = df.apply(cek_foto, axis=1)
+            else:
+                df['STATUS FOTO'] = "⚠️ ZIP Belum Upload"
+
+            st.session_state['df_siswa'] = df
+            
+            st.write("---")
+            st.subheader("👁️ Preview Data Siswa (Otomatis)")
+            st.caption(f"Total Siswa: {len(df)}")
+            # TAMPILKAN SEMUA DATA (dataframe interactive)
+            st.dataframe(df, use_container_width=True, height=400)
+            
         except Exception as e:
             st.error(f"Error membaca Excel: {e}")
 
@@ -245,8 +304,7 @@ with tab2:
             st.rerun()
 
     if st.session_state['jadwal_ujian']:
-        st.write("Preview Tabel Jadwal (Akan dicetak di kartu):")
-        # Menampilkan Tabel dengan Kolom Paraf (Kosong di preview, ada di cetak)
+        st.write("Preview Tabel Jadwal (Akan dicetak di kartu + Kolom Paraf):")
         df_show = pd.DataFrame(st.session_state['jadwal_ujian'], columns=["HARI", "JAM", "WAKTU", "MAPEL"])
         st.table(df_show)
         
@@ -265,10 +323,11 @@ with tab3:
             config = {'sekolah': in_sekolah, 'kepsek': in_kepsek, 'tanggal': in_tgl}
             logo_b = st.session_state.get('logo_bytes')
             ttd_b = st.session_state.get('ttd_bytes')
+            photos = st.session_state.get('photos', {})
             
             # Generate Doc
             try:
-                doc = generate_word_doc(st.session_state['df_siswa'], config, template_sel, logo_b, ttd_b, st.session_state['jadwal_ujian'])
+                doc = generate_word_doc(st.session_state['df_siswa'], config, template_sel, logo_b, ttd_b, st.session_state['jadwal_ujian'], photos)
                 
                 bio = io.BytesIO()
                 doc.save(bio)
