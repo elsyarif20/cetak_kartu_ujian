@@ -17,7 +17,7 @@ st.set_page_config(page_title="Generator Kartu Ujian (Word)", page_icon="🖨️
 
 st.markdown("""
 <style>
-    .stApp { background-color: #f1f5f9; }
+    .stApp { background-color: #f8fafc; }
     .main-header { 
         font-size: 2rem; font-weight: 800; color: #1e3a8a; margin-bottom: 10px; 
         border-bottom: 2px solid #cbd5e1; padding-bottom: 10px;
@@ -26,10 +26,14 @@ st.markdown("""
         background-color: #15803d; color: white; border-radius: 6px; font-weight: bold; width: 100%;
     }
     .student-row {
-        background-color: white; padding: 10px; border-radius: 8px; margin-bottom: 8px; border: 1px solid #e2e8f0;
+        background-color: white; padding: 12px; border-radius: 8px; margin-bottom: 8px; border: 1px solid #e2e8f0;
+        display: flex; align-items: center; justify-content: space-between;
     }
-    .status-ok { color: green; font-weight: bold; }
-    .status-err { color: red; font-weight: bold; }
+    .status-badge {
+        padding: 4px 10px; border-radius: 4px; font-size: 0.9em; font-weight: bold;
+    }
+    .ok { background-color: #dcfce7; color: #166534; border: 1px solid #86efac; }
+    .err { background-color: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -39,17 +43,6 @@ if 'photos' not in st.session_state: st.session_state['photos'] = {}
 # ==========================================
 # 2. LOGIC FUNCTIONS
 # ==========================================
-def extract_photos_from_zip(zip_file):
-    new_photos = {}
-    with zipfile.ZipFile(zip_file) as z:
-        for f in z.namelist():
-            if f.lower().endswith(('.png','.jpg','.jpeg')) and not f.startswith('__'):
-                try:
-                    base = f.split('/')[-1].rsplit('.',1)[0]
-                    new_photos[base] = Image.open(io.BytesIO(z.read(f)))
-                except: continue
-    return new_photos
-
 def set_cell_color(cell, color_hex):
     tcPr = cell._tc.get_or_add_tcPr()
     shd = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{color_hex}"/>')
@@ -93,7 +86,9 @@ def generate_word_doc(df, config, template_type, logo_bytes, ttd_bytes, jadwal_l
         bio_tbl = cell_l.add_table(rows=4, cols=3); bio_tbl.autofit = False
         c_foto = bio_tbl.cell(0,0); c_foto.merge(bio_tbl.cell(3,0)); c_foto.width = Cm(3.0)
         
+        # LOGIC FOTO
         nis_key = str(row.get('NISN', '')).replace('.0','')
+        # Coba cari NISN, kalau gagal cari NIS
         if nis_key not in photos: nis_key = str(row.get('NIS', '')).replace('.0','')
         
         if nis_key in photos:
@@ -158,7 +153,7 @@ with st.sidebar:
 
 tab1, tab2, tab3 = st.tabs(["📂 1. Data Siswa & Foto", "📅 2. Atur Jadwal", "🖨️ 3. Download Word"])
 
-# --- TAB 1: DATA SISWA & FOTO (UPDATED) ---
+# --- TAB 1: DATA SISWA & FOTO ---
 with tab1:
     col_up_1, col_up_2 = st.columns([1, 1])
     
@@ -173,93 +168,85 @@ with tab1:
         upl_ttd = c2.file_uploader("TTD", type=['png','jpg'])
         if upl_logo: st.session_state['logo_bytes'] = upl_logo.getvalue()
         if upl_ttd: st.session_state['ttd_bytes'] = upl_ttd.getvalue()
-        
-        st.warning("Info: Untuk upload foto siswa, gunakan tabel di bawah.")
 
-    # --- TABEL INTERAKTIF ---
     st.write("---")
-    st.subheader("📸 Status Foto & Upload Langsung")
     
+    # === FITUR UPLOAD MASSAL (KUNCI UTAMA) ===
+    st.markdown("### 📸 Upload Foto (Bisa Banyak Sekaligus)")
+    st.caption("Tips: Blok 50 foto di folder Anda, lalu tarik ke kotak di bawah ini. Nama file harus NISN (contoh: `12345.jpg`).")
+    
+    # `accept_multiple_files=True` adalah kuncinya
+    bulk_photos = st.file_uploader("Drop Foto Siswa Disini (Bisa Banyak)", type=['jpg','png','jpeg'], accept_multiple_files=True)
+    
+    if bulk_photos:
+        count_new = 0
+        for p in bulk_photos:
+            # Ambil nama file tanpa ekstensi sebagai key (contoh: "12345.jpg" -> "12345")
+            nis_key = p.name.rsplit('.', 1)[0]
+            st.session_state['photos'][nis_key] = Image.open(p)
+            count_new += 1
+        
+        st.success(f"✅ Berhasil menambahkan {count_new} foto baru! Cek tabel status di bawah.")
+
+    st.write("---")
+    
+    # === TABEL DATA & STATUS ===
     if upl_excel:
         try:
             df = pd.read_excel(upl_excel)
             df.columns = [str(c).strip().upper() for c in df.columns]
             st.session_state['df_siswa'] = df
             
-            # --- FITUR FILTER: HANYA YANG KOSONG ---
-            c_filter_1, c_filter_2 = st.columns([1, 3])
-            filter_mode = c_filter_1.radio("Tampilkan:", ["Semua Siswa", "Hanya Yang Tidak Ada Foto"])
+            st.subheader("👁️ Cek Status Foto Siswa")
             
-            # Tambahkan Upload ZIP Massal (Opsional) di sini
-            with c_filter_2:
-                upl_zip_mass = st.file_uploader("Upload Foto Massal (.zip)", type="zip", help="Nama foto = NISN")
-                if upl_zip_mass:
-                    new_photos = extract_photos_from_zip(upl_zip_mass)
-                    st.session_state['photos'].update(new_photos)
-                    st.success(f"Berhasil ekstrak {len(new_photos)} foto dari ZIP!")
-                    st.rerun()
-
-            st.write("---")
+            # HEADER TABEL MANUAL (Agar lebih rapi dari dataframe biasa)
+            cols = st.columns([3, 2, 2, 3])
+            cols[0].markdown("**Nama Siswa**")
+            cols[1].markdown("**NISN**")
+            cols[2].markdown("**Status Foto**")
+            cols[3].markdown("**Upload Satuan (Jika Kurang)**")
             
-            # Header Tabel Custom
-            cols_header = st.columns([3, 2, 2, 3])
-            cols_header[0].markdown("**Nama Siswa**")
-            cols_header[1].markdown("**NISN**")
-            cols_header[2].markdown("**Status Foto**")
-            cols_header[3].markdown("**Aksi (Upload Disini)**")
-            
-            # LOOPING BARIS SISWA
+            # LOOPING BARIS
             for idx, row in df.iterrows():
                 nama = str(row.get('NAMA PESERTA', '-'))
+                # Bersihkan NISN (hilangkan .0 jika float)
                 nisn = str(row.get('NISN', '')).replace('.0','')
                 
-                # Cek Status
-                status = "❌ KOSONG"
-                bg_color = "#fee2e2" # Merah muda
-                
+                # Cek apakah foto ada di session_state
+                status_ok = False
                 if nisn in st.session_state['photos']:
-                    status = "✅ OKE"
-                    bg_color = "#dcfce7" # Hijau muda
+                    status_ok = True
+                else:
+                    # Cek fallback ke NIS jika NISN tidak ketemu
+                    nis = str(row.get('NIS', '')).replace('.0','')
+                    if nis in st.session_state['photos']:
+                        status_ok = True
                 
-                # Filter Logic
-                if filter_mode == "Hanya Yang Tidak Ada Foto" and status == "✅ OKE":
-                    continue # Skip jika sudah oke dan filter nyala
-
-                # Render Baris
+                # Tampilan Baris
                 with st.container():
-                    st.markdown(f"""
-                    <div class="student-row">
-                        <div style="display: flex; align-items: center;">
-                            <div style="flex: 3; font-weight: bold;">{nama}</div>
-                            <div style="flex: 2;">{nisn}</div>
-                            <div style="flex: 2;"><span style="background-color:{bg_color}; padding: 5px 10px; border-radius:5px;">{status}</span></div>
-                            <div style="flex: 3;"></div> 
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    col_row = st.columns([3, 2, 2, 3])
                     
-                    # Kolom Upload (Streamlit Widget harus diluar HTML block)
-                    # Kita pakai columns lagi biar sejajar dengan div diatas secara visual
-                    c_row = st.columns([5, 2, 3]) 
-                    # Trik layout: Kolom 1&2 kosong (diwakili HTML diatas), Kolom 3 isi tombol
+                    col_row[0].write(nama)
+                    col_row[1].write(nisn)
                     
-                    with c_row[2]:
-                        # Upload Button Unik per Siswa
-                        # Jika sudah ada foto, beri opsi ganti
-                        label_btn = "Ganti Foto" if status == "✅ OKE" else "Upload Foto"
-                        up_file = st.file_uploader(label_btn, type=['jpg','png','jpeg'], key=f"up_{nisn}", label_visibility="collapsed")
-                        
-                        if up_file is not None:
-                            # Langsung Simpan
-                            img = Image.open(up_file)
-                            st.session_state['photos'][nisn] = img
-                            st.success("Tersimpan!")
-                            st.rerun() # Refresh halaman biar status jadi hijau
+                    if status_ok:
+                        col_row[2].markdown('<span class="status-badge ok">✅ ADA</span>', unsafe_allow_html=True)
+                    else:
+                        col_row[2].markdown('<span class="status-badge err">❌ KOSONG</span>', unsafe_allow_html=True)
+                    
+                    # Tombol Upload Per Baris (Satuan)
+                    with col_row[3]:
+                        # Key unik per baris agar tidak bentrok
+                        up_single = st.file_uploader("Upload", type=['jpg','png'], key=f"u_{idx}_{nisn}", label_visibility="collapsed")
+                        if up_single:
+                            # Simpan foto dengan key NISN siswa ini
+                            st.session_state['photos'][nisn] = Image.open(up_single)
+                            st.rerun() # Refresh agar status berubah jadi Hijau
 
         except Exception as e:
             st.error(f"Error membaca Excel: {e}")
     else:
-        st.info("Upload Excel data siswa dulu di atas.")
+        st.info("Menunggu upload Excel...")
 
 # --- TAB 2: JADWAL ---
 with tab2:
