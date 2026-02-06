@@ -103,7 +103,7 @@ def generate_word_doc(df, config, template_type, logo_bytes, ttd_bytes, jadwal_l
             run = p.add_run()
             run.add_picture(io.BytesIO(logo_bytes), width=Cm(1.8))
         
-        p.add_run(f"\nYAYASAN PENDIDIKAN ISLAM AL-GHOZALI\n").font.size = Pt(9)
+        p.add_run(f"\nYAYASAN PENDIDIKAN ISLAM PONDOK MODERN AL-GHOZALI\n").font.size = Pt(9)
         r = p.add_run(f"{config['sekolah']}\n")
         r.font.bold = True; r.font.size = Pt(11)
         p.add_run("_____________________________________________").font.size = Pt(6)
@@ -343,3 +343,4 @@ with tab3:
                 st.error(f"Gagal generate: {e}")
     else:
         st.warning("Silakan upload data Excel dulu di Tab 1.")
+
