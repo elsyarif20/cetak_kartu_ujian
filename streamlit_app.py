@@ -17,46 +17,37 @@ st.set_page_config(page_title="Generator Kartu Ujian (Word)", page_icon="🖨️
 
 st.markdown("""
 <style>
-    .stApp { background-color: #f8fafc; }
+    .stApp { background-color: #f1f5f9; }
     .main-header { 
         font-size: 2rem; font-weight: 800; color: #1e3a8a; margin-bottom: 10px; 
         border-bottom: 2px solid #cbd5e1; padding-bottom: 10px;
     }
     div.stButton > button {
-        background-color: #15803d; color: white; border-radius: 6px; font-weight: bold; height: 3em; width: 100%;
+        background-color: #15803d; color: white; border-radius: 6px; font-weight: bold; width: 100%;
     }
-    div.stButton > button:hover { background-color: #166534; border-color: #166534; color: white; }
-    
-    /* Highlight Status */
-    .status-box { padding: 10px; border-radius: 5px; margin-bottom: 10px; font-weight: bold; }
-    .success { background-color: #dcfce7; color: #166534; border: 1px solid #166534; }
-    .error { background-color: #fee2e2; color: #991b1b; border: 1px solid #991b1b; }
+    .student-row {
+        background-color: white; padding: 10px; border-radius: 8px; margin-bottom: 8px; border: 1px solid #e2e8f0;
+    }
+    .status-ok { color: green; font-weight: bold; }
+    .status-err { color: red; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
 
-# Inisialisasi Session State
 if 'jadwal_ujian' not in st.session_state: st.session_state['jadwal_ujian'] = []
 if 'photos' not in st.session_state: st.session_state['photos'] = {}
 
 # ==========================================
 # 2. LOGIC FUNCTIONS
 # ==========================================
-def process_images(uploaded_files, is_zip=False):
+def extract_photos_from_zip(zip_file):
     new_photos = {}
-    if is_zip and uploaded_files:
-        with zipfile.ZipFile(uploaded_files) as z:
-            for f in z.namelist():
-                if f.lower().endswith(('.png','.jpg','.jpeg')) and not f.startswith('__'):
-                    try:
-                        base = f.split('/')[-1].rsplit('.',1)[0]
-                        new_photos[base] = Image.open(io.BytesIO(z.read(f)))
-                    except: continue
-    elif uploaded_files:
-        for up_file in uploaded_files:
-            try:
-                base = up_file.name.rsplit('.',1)[0]
-                new_photos[base] = Image.open(up_file)
-            except: continue
+    with zipfile.ZipFile(zip_file) as z:
+        for f in z.namelist():
+            if f.lower().endswith(('.png','.jpg','.jpeg')) and not f.startswith('__'):
+                try:
+                    base = f.split('/')[-1].rsplit('.',1)[0]
+                    new_photos[base] = Image.open(io.BytesIO(z.read(f)))
+                except: continue
     return new_photos
 
 def set_cell_color(cell, color_hex):
@@ -66,7 +57,6 @@ def set_cell_color(cell, color_hex):
 
 def generate_word_doc(df, config, template_type, logo_bytes, ttd_bytes, jadwal_list, photos):
     doc = Document()
-    
     section = doc.sections[0]; section.orientation = 1
     section.page_width = Cm(29.7); section.page_height = Cm(21.0)
     section.left_margin = Cm(1.27); section.right_margin = Cm(1.27)
@@ -84,13 +74,11 @@ def generate_word_doc(df, config, template_type, logo_bytes, ttd_bytes, jadwal_l
     df.columns = [str(c).strip().upper() for c in df.columns]
     
     for index, row in df.iterrows():
-        main_tbl = doc.add_table(rows=1, cols=2)
-        main_tbl.style = 'Table Grid'; main_tbl.autofit = False
+        main_tbl = doc.add_table(rows=1, cols=2); main_tbl.style = 'Table Grid'; main_tbl.autofit = False
         
         # KIRI
         cell_l = main_tbl.cell(0, 0); cell_l.width = Cm(13.5)
         p = cell_l.paragraphs[0]; p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        
         if logo_bytes: run = p.add_run(); run.add_picture(io.BytesIO(logo_bytes), width=Cm(1.8))
         
         p.add_run(f"\nYAYASAN PENDIDIKAN ISLAM AL-GHOZALI\n").font.size = Pt(9)
@@ -105,15 +93,13 @@ def generate_word_doc(df, config, template_type, logo_bytes, ttd_bytes, jadwal_l
         bio_tbl = cell_l.add_table(rows=4, cols=3); bio_tbl.autofit = False
         c_foto = bio_tbl.cell(0,0); c_foto.merge(bio_tbl.cell(3,0)); c_foto.width = Cm(3.0)
         
-        # Logic Foto
         nis_key = str(row.get('NISN', '')).replace('.0','')
         if nis_key not in photos: nis_key = str(row.get('NIS', '')).replace('.0','')
         
         if nis_key in photos:
             try:
                 img_pil = photos[nis_key]
-                img_byte = io.BytesIO()
-                img_pil.save(img_byte, format='JPEG')
+                img_byte = io.BytesIO(); img_pil.save(img_byte, format='JPEG')
                 p_f = c_foto.paragraphs[0]; p_f.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 p_f.add_run().add_picture(io.BytesIO(img_byte.getvalue()), width=Cm(2.5), height=Cm(3.2))
             except: c_foto.text = "Error Foto"
@@ -153,9 +139,8 @@ def generate_word_doc(df, config, template_type, logo_bytes, ttd_bytes, jadwal_l
                 cells[4].text = ""; cells[4].width = widths[4]
         else: cell_r.add_paragraph("(Jadwal Tidak Diatur)")
 
-        doc.add_paragraph("\n")
+        doc.add_paragraph("\n"); 
         if (index + 1) % 2 == 0: doc.add_page_break()
-
     return doc
 
 # ==========================================
@@ -173,34 +158,27 @@ with st.sidebar:
 
 tab1, tab2, tab3 = st.tabs(["📂 1. Data Siswa & Foto", "📅 2. Atur Jadwal", "🖨️ 3. Download Word"])
 
-# --- TAB 1 ---
+# --- TAB 1: DATA SISWA & FOTO (UPDATED) ---
 with tab1:
     col_up_1, col_up_2 = st.columns([1, 1])
     
     with col_up_1:
-        st.info("1. Upload Excel Data Siswa (.xlsx)")
+        st.info("1. Upload Excel Data Siswa")
         upl_excel = st.file_uploader("Pilih File Excel", type=['xlsx'])
         
     with col_up_2:
-        st.info("2. Upload Aset (Bulk Upload)")
-        upl_photos = st.file_uploader("Foto Siswa (.zip / Select Multiple)", type=['jpg','png','jpeg','zip'], accept_multiple_files=True)
+        st.info("2. Upload Aset (Logo & TTD)")
         c1, c2 = st.columns(2)
         upl_logo = c1.file_uploader("Logo", type=['png','jpg'])
         upl_ttd = c2.file_uploader("TTD", type=['png','jpg'])
-
-        if upl_photos:
-            is_zip = len(upl_photos) == 1 and upl_photos[0].name.endswith('.zip')
-            if is_zip: new_photos = process_images(upl_photos[0], is_zip=True)
-            else: new_photos = process_images(upl_photos, is_zip=False)
-            st.session_state['photos'].update(new_photos)
-            st.success(f"✅ {len(new_photos)} Foto berhasil dimasukkan ke sistem!")
-
         if upl_logo: st.session_state['logo_bytes'] = upl_logo.getvalue()
         if upl_ttd: st.session_state['ttd_bytes'] = upl_ttd.getvalue()
+        
+        st.warning("Info: Untuk upload foto siswa, gunakan tabel di bawah.")
 
-    # --- PREVIEW & SINGLE UPLOAD ---
+    # --- TABEL INTERAKTIF ---
     st.write("---")
-    st.subheader("👁️ Preview & Perbaikan Foto Satuan")
+    st.subheader("📸 Status Foto & Upload Langsung")
     
     if upl_excel:
         try:
@@ -208,54 +186,82 @@ with tab1:
             df.columns = [str(c).strip().upper() for c in df.columns]
             st.session_state['df_siswa'] = df
             
-            # --- BAGIAN 1: TABEL STATUS ---
-            def cek_status_foto(row):
-                nisn = str(row.get('NISN','')).replace('.0','')
-                nis = str(row.get('NIS','')).replace('.0','')
-                if nisn in st.session_state['photos'] or nis in st.session_state['photos']: return "✅ OKE"
-                return "❌ KOSONG"
-
-            df_display = df.copy()
-            df_display.insert(0, "STATUS FOTO", df.apply(cek_status_foto, axis=1))
+            # --- FITUR FILTER: HANYA YANG KOSONG ---
+            c_filter_1, c_filter_2 = st.columns([1, 3])
+            filter_mode = c_filter_1.radio("Tampilkan:", ["Semua Siswa", "Hanya Yang Tidak Ada Foto"])
             
-            st.dataframe(df_display, use_container_width=True, height=400)
-            
-            # --- BAGIAN 2: UPLOAD SATUAN (FEATURE REQUEST) ---
-            st.markdown("### 📸 Upload Foto Satuan (Perbaikan)")
-            st.caption("Jika ada siswa yang status fotonya '❌ KOSONG', silakan upload fotonya di sini.")
-            
-            # Buat list siswa untuk dropdown
-            siswa_list = []
-            for idx, row in df.iterrows():
-                nama = row.get('NAMA PESERTA', 'Tanpa Nama')
-                nisn = str(row.get('NISN', '')).replace('.0','')
-                siswa_list.append(f"{nama} | {nisn}")
-            
-            c_fix_1, c_fix_2 = st.columns([2,1])
-            with c_fix_1:
-                selected_siswa = st.selectbox("Pilih Siswa:", options=siswa_list)
-            
-            with c_fix_2:
-                single_photo = st.file_uploader("Upload Foto (.jpg/.png)", type=['jpg','png','jpeg'], key="single_up")
-            
-            if st.button("Simpan Foto Siswa Ini"):
-                if single_photo and selected_siswa:
-                    # Ambil NISN dari string dropdown
-                    target_nisn = selected_siswa.split("|")[1].strip()
-                    # Simpan ke session state
-                    img = Image.open(single_photo)
-                    st.session_state['photos'][target_nisn] = img
-                    st.success(f"Foto untuk {selected_siswa} berhasil disimpan! Status akan berubah jadi OKE.")
+            # Tambahkan Upload ZIP Massal (Opsional) di sini
+            with c_filter_2:
+                upl_zip_mass = st.file_uploader("Upload Foto Massal (.zip)", type="zip", help="Nama foto = NISN")
+                if upl_zip_mass:
+                    new_photos = extract_photos_from_zip(upl_zip_mass)
+                    st.session_state['photos'].update(new_photos)
+                    st.success(f"Berhasil ekstrak {len(new_photos)} foto dari ZIP!")
                     st.rerun()
-                else:
-                    st.warning("Pilih siswa dan file fotonya dulu.")
+
+            st.write("---")
+            
+            # Header Tabel Custom
+            cols_header = st.columns([3, 2, 2, 3])
+            cols_header[0].markdown("**Nama Siswa**")
+            cols_header[1].markdown("**NISN**")
+            cols_header[2].markdown("**Status Foto**")
+            cols_header[3].markdown("**Aksi (Upload Disini)**")
+            
+            # LOOPING BARIS SISWA
+            for idx, row in df.iterrows():
+                nama = str(row.get('NAMA PESERTA', '-'))
+                nisn = str(row.get('NISN', '')).replace('.0','')
+                
+                # Cek Status
+                status = "❌ KOSONG"
+                bg_color = "#fee2e2" # Merah muda
+                
+                if nisn in st.session_state['photos']:
+                    status = "✅ OKE"
+                    bg_color = "#dcfce7" # Hijau muda
+                
+                # Filter Logic
+                if filter_mode == "Hanya Yang Tidak Ada Foto" and status == "✅ OKE":
+                    continue # Skip jika sudah oke dan filter nyala
+
+                # Render Baris
+                with st.container():
+                    st.markdown(f"""
+                    <div class="student-row">
+                        <div style="display: flex; align-items: center;">
+                            <div style="flex: 3; font-weight: bold;">{nama}</div>
+                            <div style="flex: 2;">{nisn}</div>
+                            <div style="flex: 2;"><span style="background-color:{bg_color}; padding: 5px 10px; border-radius:5px;">{status}</span></div>
+                            <div style="flex: 3;"></div> 
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Kolom Upload (Streamlit Widget harus diluar HTML block)
+                    # Kita pakai columns lagi biar sejajar dengan div diatas secara visual
+                    c_row = st.columns([5, 2, 3]) 
+                    # Trik layout: Kolom 1&2 kosong (diwakili HTML diatas), Kolom 3 isi tombol
+                    
+                    with c_row[2]:
+                        # Upload Button Unik per Siswa
+                        # Jika sudah ada foto, beri opsi ganti
+                        label_btn = "Ganti Foto" if status == "✅ OKE" else "Upload Foto"
+                        up_file = st.file_uploader(label_btn, type=['jpg','png','jpeg'], key=f"up_{nisn}", label_visibility="collapsed")
+                        
+                        if up_file is not None:
+                            # Langsung Simpan
+                            img = Image.open(up_file)
+                            st.session_state['photos'][nisn] = img
+                            st.success("Tersimpan!")
+                            st.rerun() # Refresh halaman biar status jadi hijau
 
         except Exception as e:
-            st.error(f"Error: {e}")
+            st.error(f"Error membaca Excel: {e}")
     else:
-        st.warning("Silakan upload Excel data siswa terlebih dahulu.")
+        st.info("Upload Excel data siswa dulu di atas.")
 
-# --- TAB 2 ---
+# --- TAB 2: JADWAL ---
 with tab2:
     st.subheader("Pengaturan Jadwal")
     if upl_excel:
@@ -277,11 +283,10 @@ with tab2:
             st.session_state['jadwal_ujian'].append([t_hari, t_jam, t_waktu, t_mapel]); st.rerun()
 
     if st.session_state['jadwal_ujian']:
-        st.write("Preview Tabel Jadwal:")
         st.table(pd.DataFrame(st.session_state['jadwal_ujian'], columns=["HARI", "JAM", "WAKTU", "MAPEL"]))
         if st.button("Hapus Semua Jadwal"): st.session_state['jadwal_ujian'] = []; st.rerun()
 
-# --- TAB 3 ---
+# --- TAB 3: CETAK ---
 with tab3:
     st.subheader("Download Hasil")
     if 'df_siswa' in st.session_state:
